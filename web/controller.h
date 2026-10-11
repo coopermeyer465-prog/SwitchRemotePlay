@@ -114,6 +114,7 @@ button.down,button.desktop-lit,button:active{background:#3b4652!important;box-sh
   <section id="keymapPanel" class="keymap-panel" aria-label="Desktop control mappings">
     <div class="keymap-header"><strong>Desktop controls</strong><button id="closeKeymap" aria-label="Close mappings">X</button></div>
     <div id="keymapGrid" class="keymap-grid"></div>
+    <details id="gamepadDetails"><summary>Controller input</summary><pre id="gamepadRaw" style="white-space:pre-wrap;overflow-wrap:anywhere;font-size:12px;user-select:text"></pre></details>
     <div class="keymap-footer"><button id="resetKeymap" aria-label="Reset desktop mappings" title="Reset mappings"><svg viewBox="0 0 24 24"><path d="M3 12a9 9 0 1 0 3-6.7L3 8"/><path d="M3 3v5h5"/></svg></button></div>
   </section>
   <div class="layout-tools">
@@ -130,6 +131,7 @@ button.down,button.desktop-lit,button:active{background:#3b4652!important;box-sh
     </div>
   </div>
 </main>
+<script src="/gamepad.js"></script>
 <script>
 const neutral=()=>({buttons:0,hat:8,lx:128,ly:128,rx:128,ry:128});
 const touch=neutral(),physical=neutral(),desktop=neutral();
@@ -343,16 +345,18 @@ function pollGamepads(){
   let pads=[],padError=false;
   try{pads=navigator.getGamepads?[...navigator.getGamepads()].filter(Boolean):[]}catch(e){padError=true}
   physicalConnected=pads.length>0;Object.assign(physical,neutral());
+  const rawEl=document.getElementById("gamepadRaw");
+  if(document.getElementById("gamepadDetails").open)rawEl.textContent=JSON.stringify(pads.map(g=>({name:g.id,mapping:g.mapping,axes:Array.from(g.axes).map(v=>Number(v.toFixed(3))),buttonCount:g.buttons.length,pressed:g.buttons.map((b,i)=>b.pressed||b.value>.5?i:null).filter(i=>i!==null)})),null,2);
   if(pads.length){
-    const names=[];let axesPad=null;
+    const names=[];let axesState=null;
     for(const g of pads){
       names.push(g.id.replace(/\s*\([^)]*vendor[^)]*\)/i,"").slice(0,28));
-      const indices=[0,1,2,3,4,5,6,7,8,9,10,11,16,17],bits=[2,4,1,8,16,32,64,128,256,512,1024,2048,4096,8192];
-      indices.forEach((idx,i)=>{if(pressed(g,idx))physical.buttons|=bits[i]});
-      if(pressed(g,12))physical.hat=0;else if(pressed(g,13))physical.hat=4;else if(pressed(g,14))physical.hat=6;else if(pressed(g,15))physical.hat=2;
-      if(!axesPad&&g.axes.length>=2)axesPad=g;
+      const state=SwitchGamepad.mapGamepad(g);
+      physical.buttons|=state.buttons;
+      if(state.hat!==8)physical.hat=state.hat;
+      if(!axesState&&g.axes.length>=2)axesState=state;
     }
-    if(axesPad){const a=axesPad.axes,axis=i=>Math.round(Math.max(-1,Math.min(1,a[i]||0))*127+128);physical.lx=axis(0);physical.ly=axis(1);if(a.length>=4){physical.rx=axis(2);physical.ry=axis(3)}}
+    if(axesState)for(const axis of ["lx","ly","rx","ry"])physical[axis]=axesState[axis];
     gpEl.textContent=names.join(" + ");
   }else gpEl.textContent=padError?"gamepad unavailable":desktopMode?"keyboard + mouse":"touch controls";
   send();requestAnimationFrame(pollGamepads);

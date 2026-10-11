@@ -90,6 +90,12 @@ localhost qualifies, while a plain HTTP LAN IP may not. Press a controller
 button with the page open to let the browser expose the controller. If another
 page owns P1, close that page and allow up to 15 seconds for its lease to expire.
 
+The nonstandard Chrome/macOS `Lic2 Pro Controller` layout has its own profile:
+left stick axes 0/1, right stick axes 3/4, and D-pad hat axis 9. Shoulder,
+trigger, Home and Capture buttons use its raw HID ordering. Standard-mapped
+controllers retain the standard profile. In the editor's desktop mappings
+panel, expand Controller input to inspect the axes and pressed button indices.
+
 ## Mac-to-Mac Input
 
 1. Enable macOS Remote Login on the host for the intended account.
@@ -165,6 +171,12 @@ After the relay helper has prepared its Python environment:
 ```sh
 cd host/pro-micro
 build/venv/bin/python -m unittest -v test_relay.py
+```
+
+With Node.js installed, test both controller profiles from the repo root:
+
+```sh
+node --test web/gamepad.test.js
 ```
 
 Tests cover WebSocket input, serial output, device exclusivity, malformed

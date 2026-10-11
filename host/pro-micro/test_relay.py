@@ -78,6 +78,10 @@ class RelayTests(unittest.IsolatedAsyncioTestCase):
         self.assertIn('id="stickL"', html)
         self.assertIn('function claimController()', html)
         self.assertNotIn('R"HTML(', html)
+        self.assertIn('src="/gamepad.js"', html)
+        script = await self.client.get('/gamepad.js')
+        self.assertEqual(script.status, 200)
+        self.assertEqual(script.content_type, 'application/javascript')
 
     def test_crc_standard_vector(self):
         self.assertEqual(crc8(b'123456789'), 0xf4)
