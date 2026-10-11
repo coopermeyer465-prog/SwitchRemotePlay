@@ -90,6 +90,24 @@ localhost qualifies, while a plain HTTP LAN IP may not. Press a controller
 button with the page open to let the browser expose the controller. If another
 page owns P1, close that page and allow up to 15 seconds for its lease to expire.
 
+## PowerA Lic2 WebHID
+
+If Chrome's Gamepad API misreads a PowerA Lic2 controller but a WebHID tester
+works, use the plug icon at the lower left of the controller page. Select
+**Lic2 Pro Controller** in Chrome's device chooser. Close any WebHID tester
+connection first. This requires desktop Chrome with WebHID on localhost or
+HTTPS; it is not available in iPhone/iPad Safari.
+
+This input-only path reads the HID descriptor's X/Y and Rx/Ry fields directly
+and uses PowerA's raw button ordering. It sends no output or feature reports
+and does not change controller firmware or settings. While connected, it
+replaces the Gamepad API input to prevent duplicate or conflicting controls.
+Click the plug again to disconnect. Only complete standard HID stick reports
+are supported; vendor-specific packets are ignored. Hardware validation is
+still required for each controller variant.
+
+Test the decoder with `node --test web/lic2-hid.test.js`.
+
 ## Mac-to-Mac Input
 
 1. Enable macOS Remote Login on the host for the intended account.

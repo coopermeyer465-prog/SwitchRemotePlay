@@ -97,6 +97,10 @@ def create_app(bridge):
     async def root(request):
         return web.Response(text=html, content_type='text/html', headers={'Cache-Control': 'no-store'})
 
+    async def hid_script(request):
+        return web.Response(text=(ROOT / 'web/lic2-hid.js').read_text(),
+                            content_type='application/javascript', headers={'Cache-Control': 'no-store'})
+
     async def claim(request):
         bridge.claim(request.query.get('device', ''))
         return web.json_response({'player': 0})
@@ -139,7 +143,7 @@ def create_app(bridge):
             bridge.write(NEUTRAL)
 
     app = web.Application(client_max_size=2048)
-    app.add_routes([web.get('/', root), web.get('/api/claim', claim),
+    app.add_routes([web.get('/', root), web.get('/lic2-hid.js', hid_script), web.get('/api/claim', claim),
                     web.post('/api/input', input_handler), web.get('/ws', websocket)])
     app.cleanup_ctx.append(watchdog)
     return app

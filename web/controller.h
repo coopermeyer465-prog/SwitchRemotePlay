@@ -77,6 +77,7 @@ button.down,button.desktop-lit,button:active{background:#3b4652!important;box-sh
  .statusbar.physical{bottom:3px;max-width:28%}.layout-tools{bottom:max(6px,env(safe-area-inset-bottom))}
  #leftStickIndicator{top:27%}#rightStickIndicator{bottom:15%}
 }
+#connectHID{position:fixed;z-index:20;left:max(14px,env(safe-area-inset-left));bottom:max(14px,env(safe-area-inset-bottom));width:40px;height:40px;border:1px solid #4b5561;border-radius:7px;background:#20262d}#connectHID svg{width:21px;height:21px;fill:none;stroke:currentColor;stroke-width:2;stroke-linecap:round;stroke-linejoin:round}#connectHID.active{border-color:#24d6cf;color:#24d6cf}
 </style>
 </head>
 <body class="no-background">
@@ -107,6 +108,7 @@ button.down,button.desktop-lit,button:active{background:#3b4652!important;box-sh
   </section>
   <div class="statusbar connection"><span id="dot" class="dot"></span><span id="status">connecting</span></div>
   <div id="gp" class="statusbar physical">touch controls</div>
+  <button id="connectHID" aria-label="Connect PowerA via WebHID" title="Connect PowerA via WebHID" hidden><svg viewBox="0 0 24 24"><path d="M9 3v4m6-4v4M7 7h10v3a5 5 0 0 1-10 0V7zm5 8v6"/></svg></button>
   <button id="desktopMode" class="desktop-mode-button" aria-label="Enter desktop controller mode" title="Desktop controller mode"><svg viewBox="0 0 24 24"><path d="M8 3H3v5M16 3h5v5M8 21H3v-5M16 21h5v-5"/></svg></button>
   <button id="playerSelect" class="player-select" aria-label="Select player" title="Select player">P1</button>
   <div id="resizeHandle" class="resize-handle" aria-label="Resize selected control"></div>
@@ -130,6 +132,7 @@ button.down,button.desktop-lit,button:active{background:#3b4652!important;box-sh
     </div>
   </div>
 </main>
+<script src="/lic2-hid.js"></script>
 <script>
 try{localStorage.removeItem("switchpad-gamepad-calibration-v1")}catch(e){}
 const neutral=()=>({buttons:0,hat:8,lx:128,ly:128,rx:128,ry:128});
@@ -140,6 +143,38 @@ let ws,connected=false,lastSent="",physicalConnected=false,useHttp=true,httpBusy
 let player=0,sticksSwapped=false,desktopMode=false,mouseVX=0,mouseVY=0,lastMouseMoveAt=0;
 const desktopKeys=new Set(),desktopMouseButtons=new Set();
 const dot=document.getElementById("dot"),statusEl=document.getElementById("status"),gpEl=document.getElementById("gp");
+const hidButton=document.getElementById("connectHID");
+let hidDevice=null,hidState=neutral(),hidLayouts=null,hidMessage="",hidBusy=false;
+hidButton.hidden=!navigator.hid;
+function hidInput(event){
+  const state=Lic2HID.decode(hidLayouts?.get(event.reportId),event.data);
+  if(!state)return;
+  hidState=state;hidMessage=`WebHID · ${hidDevice.productName}`;
+  Object.assign(physical,state);physicalConnected=true;send();
+}
+async function disconnectHID(){
+  const device=hidDevice;hidDevice=null;hidLayouts=null;hidState=neutral();
+  hidButton.classList.remove("active");hidButton.setAttribute("aria-label","Connect PowerA via WebHID");
+  hidButton.title="Connect PowerA via WebHID";hidMessage="";
+  Object.assign(physical,neutral());send(true);
+  if(device){device.removeEventListener("inputreport",hidInput);if(device.opened)await device.close()}
+}
+hidButton.onclick=async()=>{
+  if(hidBusy)return;hidBusy=true;
+  try{
+    if(hidDevice){await disconnectHID();return}
+    const devices=await navigator.hid.requestDevice({filters:[{usagePage:1,usage:5},{usagePage:1,usage:4}]});
+    const device=devices[0];if(!device)return;
+    if(!/^Lic2 Pro Controller\b/i.test(device.productName)){hidMessage="Select Lic2 Pro Controller";return}
+    const reports=Lic2HID.layouts(device.collections);
+    if(!reports.size){hidMessage="No supported raw stick report found";return}
+    await device.open();hidDevice=device;hidLayouts=reports;hidState=neutral();
+    hidMessage="WebHID connected · move a stick";
+    device.addEventListener("inputreport",hidInput);
+    hidButton.classList.add("active");hidButton.setAttribute("aria-label","Disconnect WebHID controller");hidButton.title="Disconnect WebHID controller";
+  }catch(e){hidMessage=`WebHID: ${e.message}`}finally{hidBusy=false}
+};
+if(navigator.hid)navigator.hid.addEventListener("disconnect",event=>{if(event.device===hidDevice)disconnectHID().catch(()=>{})});
 const playerSelect=document.getElementById("playerSelect");
 const gamepadEl=document.querySelector(".gamepad"),photoInput=document.getElementById("backgroundPhoto"),chooseBackground=document.getElementById("chooseBackground"),removeBackground=document.getElementById("removeBackground");
 const backgroundKey="switchpad-background-v1";
@@ -343,6 +378,10 @@ function pressed(g,i){return !!g.buttons[i]&&(g.buttons[i].pressed||g.buttons[i]
 function pollGamepads(){
   let pads=[],padError=false;
   try{pads=navigator.getGamepads?[...navigator.getGamepads()].filter(Boolean):[]}catch(e){padError=true}
+  if(hidDevice){
+    physicalConnected=true;Object.assign(physical,hidState);gpEl.textContent=hidMessage;
+    send();requestAnimationFrame(pollGamepads);return;
+  }
   physicalConnected=pads.length>0;Object.assign(physical,neutral());
   if(pads.length){
     const names=[];let axesPad=null;
@@ -356,6 +395,7 @@ function pollGamepads(){
     if(axesPad){const a=axesPad.axes,axis=i=>Math.round(Math.max(-1,Math.min(1,a[i]||0))*127+128);physical.lx=axis(0);physical.ly=axis(1);if(a.length>=4){physical.rx=axis(2);physical.ry=axis(3)}}
     gpEl.textContent=names.join(" + ");
   }else gpEl.textContent=padError?"gamepad unavailable":desktopMode?"keyboard + mouse":"touch controls";
+  if(hidMessage)gpEl.textContent=hidMessage;
   send();requestAnimationFrame(pollGamepads);
 }
 window.addEventListener("gamepadconnected",()=>send(true));window.addEventListener("gamepaddisconnected",()=>send(true));setInterval(()=>send(true),250);pollGamepads();
