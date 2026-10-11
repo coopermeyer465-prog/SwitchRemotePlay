@@ -90,11 +90,17 @@ localhost qualifies, while a plain HTTP LAN IP may not. Press a controller
 button with the page open to let the browser expose the controller. If another
 page owns P1, close that page and allow up to 15 seconds for its lease to expire.
 
-The nonstandard Chrome/macOS `Lic2 Pro Controller` layout has its own profile:
-left stick axes 0/1, right stick axes 3/4, and D-pad hat axis 9. Shoulder,
-trigger, Home and Capture buttons use its raw HID ordering. Standard-mapped
-controllers retain the standard profile. In the editor's desktop mappings
-panel, expand Controller input to inspect the axes and pressed button indices.
+The nonstandard Chrome/macOS `Lic2 Pro Controller` reports can vary. If sticks
+or shoulder buttons are wrong, open the pencil editor, then Desktop mappings,
+and choose **Calibrate controller**. Capture neutral with both sticks at rest,
+then hold each requested stick direction or shoulder button while clicking
+Capture with the mouse. The page measures axis slots, centers, directions and
+travel ranges, plus L/ZL/R/ZR button indices. It keeps Switch input neutral
+during calibration and saves a completed profile locally in this browser for
+that controller. Cancel leaves the previous profile unchanged. Recalibrate
+after changing Bluetooth pairing mode if necessary. Standard controllers keep
+their standard mapping unless calibrated. Expand Controller input in the same
+panel to inspect raw axes and pressed button indices.
 
 ## Mac-to-Mac Input
 

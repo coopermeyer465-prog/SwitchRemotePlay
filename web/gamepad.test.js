@@ -1,13 +1,13 @@
 const {test} = require('node:test');
 const assert = require('node:assert/strict');
-const {mapGamepad} = require('./gamepad.js');
+const {mapGamepad, detectAxis} = require('./gamepad.js');
 function pad(lic2 = true) {
   return {id: lic2 ? 'Lic2 Pro Controller (Vendor: 0000 Product: 0000)' : 'Standard gamepad',
     mapping: lic2 ? '' : 'standard', axes: lic2 ? [0,0,0,0,0,0,0,0,0,9/7] : [0,0,0,0],
     buttons: Array.from({length:18}, () => ({pressed:false,value:0}))};
 }
 test('Lic2 maps all fourteen controls without turning Home into D-pad input', () => {
-  const expected = [2,4,1,8,64,128,16,32,256,512,1024,2048,4096,8192];
+  const expected = [2,4,1,8,16,32,64,128,256,512,1024,2048,4096,8192];
   for (let i = 0; i < expected.length; i++) {
     const g = pad(); g.buttons[i] = {pressed:true,value:1};
     const state = mapGamepad(g);
@@ -36,4 +36,20 @@ test('standard-mapped Lic2 uses the standard mapping', () => {
   const g = pad(); g.mapping='standard'; g.buttons[4].pressed=true; g.axes[2]=-1;
   assert.equal(mapGamepad(g).buttons,16);
   assert.equal(mapGamepad(g).rx,1);
+});
+test('axis detection learns unexpected slots and excludes already assigned axes', () => {
+  assert.equal(detectAxis([0,0,.6,0,-.9],[0,0,0,0,0]),4);
+  assert.equal(detectAxis([0,0,.6,0,-.9],[0,0,0,0,0],[4]),2);
+  assert.equal(detectAxis([.01,0],[0,0]),-1);
+});
+test('calibration handles reversed, offset, narrow and asymmetric stick ranges', () => {
+  const g=pad();
+  const profile={axes:{lx:{index:6,center:.6,negative:1,positive:.2},
+    ry:{index:7,center:-.8,negative:-1,positive:-.2}},buttons:{16:6,64:4,32:7,128:5}};
+  g.axes[6]=.4; g.axes[7]=-.9; g.buttons[4].pressed=true;
+  const s=mapGamepad(g,profile);
+  assert.equal(s.lx,192); assert.equal(s.ry,65); assert.equal(s.buttons,64);
+  g.axes[6]=.601;assert.equal(mapGamepad(g,profile).lx,128);
+  g.axes[6]=-1;assert.equal(mapGamepad(g,profile).lx,255);
+  g.axes[6]=NaN;assert.equal(mapGamepad(g,profile).lx,128);
 });
