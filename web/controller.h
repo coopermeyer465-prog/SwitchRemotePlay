@@ -140,6 +140,7 @@ const touch=neutral(),physical=neutral(),desktop=neutral();
 const activeSticks={lx:false,rx:false},desktopAxes={lx:false,rx:false};
 const dirs=new Set();
 let ws,connected=false,lastSent="",physicalConnected=false,useHttp=true,httpBusy=false,pendingPayload="",editing=false,lastWireMs=0,sendTimer=0,claimed=false;
+let lastWireDigital="";
 let player=0,sticksSwapped=false,desktopMode=false,mouseVX=0,mouseVY=0,lastMouseMoveAt=0;
 const desktopKeys=new Set(),desktopMouseButtons=new Set();
 const dot=document.getElementById("dot"),statusEl=document.getElementById("status"),gpEl=document.getElementById("gp");
@@ -219,16 +220,19 @@ function merged(){
     rx:activeSticks.rx?touch.rx:desktopAxes.rx?desktop.rx:physicalConnected?physical.rx:touch.rx,
     ry:activeSticks.rx?touch.ry:desktopAxes.rx?desktop.ry:physicalConnected?physical.ry:touch.ry};
 }
-function payload(){const s=merged();return `device=${deviceId}&buttons=${s.buttons}&hat=${s.hat}&lx=${s.lx}&ly=${s.ly}&rx=${s.rx}&ry=${s.ry}`}
+function payload(s=merged()){return `device=${deviceId}&buttons=${s.buttons}&hat=${s.hat}&lx=${s.lx}&ly=${s.ly}&rx=${s.rx}&ry=${s.ry}`}
 function postInput(p){
   httpBusy=true;lastSent=p;
   fetch("/api/input",{method:"POST",headers:{"Content-Type":"text/plain"},body:p}).then(r=>{if(!r.ok)throw Error(r.status===503?"full":"offline");dot.classList.add("ok");statusEl.textContent=`connected · P${player+1}`}).catch(e=>{dot.classList.remove("ok");statusEl.textContent=e.message==="full"?"4 controllers in use":"reconnecting";claimed=false;setTimeout(claimController,700)}).finally(()=>{httpBusy=false;if(pendingPayload){const next=pendingPayload;pendingPayload="";if(claimed&&next!==lastSent)postInput(next)}})
 }
 function send(force=false){
-  if(!claimed)return;const p=payload();if(!force&&p===lastSent)return;
+  if(!claimed)return;const s=merged(),p=payload(s);if(!force&&p===lastSent)return;
   const now=performance.now();
-  if(!force&&now-lastWireMs<4){if(!sendTimer)sendTimer=setTimeout(()=>{sendTimer=0;send()},Math.max(1,4-(performance.now()-lastWireMs)));return}
-  lastWireMs=now;
+  const digital=`${s.buttons}:${s.hat}`;
+  // Button edges bypass the analog rate limit; continuous motion must fit UART throughput.
+  if(digital===lastWireDigital&&now-lastWireMs<4){if(!sendTimer)sendTimer=setTimeout(()=>{sendTimer=0;send(force)},Math.max(1,4-(performance.now()-lastWireMs)));return}
+  if(sendTimer){clearTimeout(sendTimer);sendTimer=0}
+  lastWireMs=now;lastWireDigital=digital;
   if(connected&&ws?.readyState===WebSocket.OPEN){ws.send(p);lastSent=p;return}
   if(useHttp){if(httpBusy){pendingPayload=p;return}postInput(p)}
 }
