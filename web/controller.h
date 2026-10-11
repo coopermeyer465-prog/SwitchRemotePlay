@@ -121,6 +121,7 @@ button.down,button.desktop-lit,button:active{background:#3b4652!important;box-sh
     <button id="calibrateGamepad" type="button">Calibrate controller</button>
     <div id="calibrationPanel" hidden>
       <p id="calibrationPrompt" role="status"></p>
+      <pre id="calibrationRaw" style="white-space:pre-wrap;overflow-wrap:anywhere;font-size:12px;user-select:text"></pre>
       <button id="captureCalibration" type="button">Capture</button>
       <button id="cancelCalibration" type="button">Cancel</button>
     </div>
@@ -389,9 +390,10 @@ document.getElementById("captureCalibration").onclick=()=>{
     const [key,end]=calibrationSteps[c.step];
     if(end){
       const used=Object.entries(c.axes).filter(([k])=>k!==key).map(([,s])=>s.index);
-      const index=c.axes[key]?.index??SwitchGamepad.detectAxis(g.axes,c.centers,used);
-      const v=g.axes[index],center=c.centers[index];
-      if(index<0||!Number.isFinite(v)||Math.abs(v-center)<.08){prompt.textContent="No clear stick movement detected. Hold it fully in the requested direction and capture again.";return}
+      const samples=c.peaks||g.axes;
+      const index=c.axes[key]?.index??SwitchGamepad.detectAxis(samples,c.centers,used);
+      const v=samples[index],center=c.centers[index];
+      if(index<0||!Number.isFinite(v)||Math.abs(v-center)<.002){prompt.textContent=`No stick movement received. ${calibrationSteps[c.step][2]}, release it, then click Capture.`;return}
       if(end==="positive"&&(v-center)*(c.axes[key].negative-center)>=0){prompt.textContent="Move the stick to the opposite end and capture again.";return}
       c.axes[key]={...c.axes[key],index,center,[end]:v};
     }else{
@@ -401,6 +403,7 @@ document.getElementById("captureCalibration").onclick=()=>{
     }
   }
   c.step++;
+  c.peaks=Array.from(c.centers);
   if(c.step===calibrationSteps.length){
     const profile={axes:c.axes,buttons:c.buttons};
     try{localStorage.setItem("switchpad-gamepad-calibration-v1",JSON.stringify({...gamepadProfiles,[c.key]:profile}))}catch(e){prompt.textContent="Could not save calibration. Allow browser storage and try again.";c.step--;return}
@@ -412,6 +415,21 @@ function pollGamepads(){
   let pads=[],padError=false;
   try{pads=navigator.getGamepads?[...navigator.getGamepads()].filter(Boolean):[]}catch(e){padError=true}
   currentGamepads=pads;
+  if(calibration){
+    const c=calibration,g=pads.find(g=>g.index===c.index&&g.id===c.id);
+    if(g){
+      if(c.step>=0&&calibrationSteps[c.step]?.[1]){
+        const [key,end]=calibrationSteps[c.step];
+        g.axes.forEach((v,i)=>{
+          if(!Number.isFinite(v))return;
+          if(end==="positive"&&c.axes[key]&&(v-c.centers[i])*(c.axes[key].negative-c.centers[i])>=0)return;
+          if(Math.abs(v-c.centers[i])>Math.abs(c.peaks[i]-c.centers[i]))c.peaks[i]=v;
+        });
+      }
+      const values=a=>a?.map(v=>Number(v.toFixed(6))).join(", ")||"not captured";
+      document.getElementById("calibrationRaw").textContent=`Live: ${values(Array.from(g.axes))}\nNeutral: ${values(c.centers)}\nRecorded: ${values(c.peaks)}`;
+    }
+  }
   physicalConnected=pads.length>0;Object.assign(physical,neutral());
   const rawEl=document.getElementById("gamepadRaw");
   if(document.getElementById("gamepadDetails").open)rawEl.textContent=JSON.stringify(pads.map(g=>({name:g.id,mapping:g.mapping,axes:Array.from(g.axes).map(v=>Number(v.toFixed(3))),buttonCount:g.buttons.length,pressed:g.buttons.map((b,i)=>b.pressed||b.value>.5?i:null).filter(i=>i!==null)})),null,2);

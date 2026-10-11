@@ -40,7 +40,14 @@ test('standard-mapped Lic2 uses the standard mapping', () => {
 test('axis detection learns unexpected slots and excludes already assigned axes', () => {
   assert.equal(detectAxis([0,0,.6,0,-.9],[0,0,0,0,0]),4);
   assert.equal(detectAxis([0,0,.6,0,-.9],[0,0,0,0,0],[4]),2);
-  assert.equal(detectAxis([.01,0],[0,0]),-1);
+  assert.equal(detectAxis([.0001,0],[0,0]),-1);
+});
+test('small raw HID axis travel still detects and scales to full stick range', () => {
+  const g=pad();g.axes[5]=.006;
+  assert.equal(detectAxis(g.axes,[0,0,0,0,0,0,0,0,0,9/7]),5);
+  const p={axes:{lx:{index:5,center:0,negative:-.006,positive:.006}}};
+  assert.equal(mapGamepad(g,p).lx,255);
+  g.axes[5]=-.006;assert.equal(mapGamepad(g,p).lx,1);
 });
 test('calibration handles reversed, offset, narrow and asymmetric stick ranges', () => {
   const g=pad();

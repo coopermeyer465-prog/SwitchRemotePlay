@@ -9,7 +9,7 @@
   };
 
   function detectAxis(axes, centers, excluded = []) {
-    let index = -1, change = 0.08;
+    let index = -1, change = 0.002;
     axes.forEach((v, i) => {
       const delta = Math.abs(v - centers[i]);
       if (!excluded.includes(i) && Number.isFinite(delta) && delta > change) {
@@ -25,7 +25,7 @@
     const direction = Math.sign(spec.positive - spec.center);
     const delta = (value - spec.center) * direction;
     const span = Math.abs((delta < 0 ? spec.negative : spec.positive) - spec.center);
-    if (!(span > 0.04)) return 128;
+    if (!(span > 0.002)) return 128;
     const normalized = Math.max(-1, Math.min(1, delta / span));
     return Math.abs(normalized) < 0.04 ? 128 : Math.round(128 + normalized * 127);
   }
