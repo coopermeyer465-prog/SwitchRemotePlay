@@ -90,21 +90,6 @@ localhost qualifies, while a plain HTTP LAN IP may not. Press a controller
 button with the page open to let the browser expose the controller. If another
 page owns P1, close that page and allow up to 15 seconds for its lease to expire.
 
-The nonstandard Chrome/macOS `Lic2 Pro Controller` reports can vary. If sticks
-or shoulder buttons are wrong, open the pencil editor, then Desktop mappings,
-and choose **Calibrate controller**. Capture neutral with both sticks at rest,
-then move each stick fully in the requested direction. Its furthest movement
-is remembered, so you can release it before clicking Capture. For shoulder
-buttons, hold the requested button while clicking Capture. Live and recorded
-axis values are displayed during calibration for troubleshooting.
-The page measures axis slots, centers, directions and
-travel ranges, plus L/ZL/R/ZR button indices. It keeps Switch input neutral
-during calibration and saves a completed profile locally in this browser for
-that controller. Cancel leaves the previous profile unchanged. Recalibrate
-after changing Bluetooth pairing mode if necessary. Standard controllers keep
-their standard mapping unless calibrated. Expand Controller input in the same
-panel to inspect raw axes and pressed button indices.
-
 ## Mac-to-Mac Input
 
 1. Enable macOS Remote Login on the host for the intended account.
@@ -180,12 +165,6 @@ After the relay helper has prepared its Python environment:
 ```sh
 cd host/pro-micro
 build/venv/bin/python -m unittest -v test_relay.py
-```
-
-With Node.js installed, test both controller profiles from the repo root:
-
-```sh
-node --test web/gamepad.test.js
 ```
 
 Tests cover WebSocket input, serial output, device exclusivity, malformed

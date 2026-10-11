@@ -77,9 +77,6 @@ button.down,button.desktop-lit,button:active{background:#3b4652!important;box-sh
  .statusbar.physical{bottom:3px;max-width:28%}.layout-tools{bottom:max(6px,env(safe-area-inset-bottom))}
  #leftStickIndicator{top:27%}#rightStickIndicator{bottom:15%}
 }
-.keymap-panel #calibrateGamepad,.keymap-panel #calibrationPanel button{min-height:38px;padding:8px 14px;border:1px solid #4b5561;border-radius:6px;background:#20262d;color:#f5f7fa;font:inherit}
-.keymap-panel.calibrating .keymap-grid,.keymap-panel.calibrating #gamepadDetails,.keymap-panel.calibrating #calibrateGamepad,.keymap-panel.calibrating .keymap-footer{display:none}
-#calibrationPrompt{line-height:1.5;margin:20px 0}#captureCalibration{border-color:#24d6cf!important}#calibrationPanel button{margin-right:8px}
 </style>
 </head>
 <body class="no-background">
@@ -117,14 +114,6 @@ button.down,button.desktop-lit,button:active{background:#3b4652!important;box-sh
   <section id="keymapPanel" class="keymap-panel" aria-label="Desktop control mappings">
     <div class="keymap-header"><strong>Desktop controls</strong><button id="closeKeymap" aria-label="Close mappings">X</button></div>
     <div id="keymapGrid" class="keymap-grid"></div>
-    <details id="gamepadDetails"><summary>Controller input</summary><pre id="gamepadRaw" style="white-space:pre-wrap;overflow-wrap:anywhere;font-size:12px;user-select:text"></pre></details>
-    <button id="calibrateGamepad" type="button">Calibrate controller</button>
-    <div id="calibrationPanel" hidden>
-      <p id="calibrationPrompt" role="status"></p>
-      <pre id="calibrationRaw" style="white-space:pre-wrap;overflow-wrap:anywhere;font-size:12px;user-select:text"></pre>
-      <button id="captureCalibration" type="button">Capture</button>
-      <button id="cancelCalibration" type="button">Cancel</button>
-    </div>
     <div class="keymap-footer"><button id="resetKeymap" aria-label="Reset desktop mappings" title="Reset mappings"><svg viewBox="0 0 24 24"><path d="M3 12a9 9 0 1 0 3-6.7L3 8"/><path d="M3 3v5h5"/></svg></button></div>
   </section>
   <div class="layout-tools">
@@ -141,8 +130,8 @@ button.down,button.desktop-lit,button:active{background:#3b4652!important;box-sh
     </div>
   </div>
 </main>
-<script src="/gamepad.js"></script>
 <script>
+try{localStorage.removeItem("switchpad-gamepad-calibration-v1")}catch(e){}
 const neutral=()=>({buttons:0,hat:8,lx:128,ly:128,rx:128,ry:128});
 const touch=neutral(),physical=neutral(),desktop=neutral();
 const activeSticks={lx:false,rx:false},desktopAxes={lx:false,rx:false};
@@ -189,7 +178,6 @@ function connect(){
 }
 claimController();
 function merged(){
-  if(calibration)return neutral();
   return {buttons:touch.buttons|physical.buttons|desktop.buttons,hat:touch.hat!==8?touch.hat:desktop.hat!==8?desktop.hat:physical.hat,
     lx:activeSticks.lx?touch.lx:desktopAxes.lx?desktop.lx:physicalConnected?physical.lx:touch.lx,
     ly:activeSticks.lx?touch.ly:desktopAxes.lx?desktop.ly:physicalConnected?physical.ly:touch.ly,
@@ -265,7 +253,7 @@ async function enterDesktopMode(){
 }
 desktopButton.addEventListener("click",enterDesktopMode);
 document.getElementById("editKeymap").addEventListener("click",()=>{updateMappingHints();renderKeymap();document.getElementById("keymapPanel").classList.add("open")});
-document.getElementById("closeKeymap").addEventListener("click",()=>{stopCalibration();captureAction="";document.getElementById("keymapPanel").classList.remove("open")});
+document.getElementById("closeKeymap").addEventListener("click",()=>{captureAction="";document.getElementById("keymapPanel").classList.remove("open")});
 document.getElementById("resetKeymap").addEventListener("click",()=>{desktopMapping=defaultDesktopMapping();saveDesktopMapping();updateMappingHints();renderKeymap()});
 document.addEventListener("fullscreenchange",()=>{desktopMode=document.fullscreenElement===gamepadEl;document.body.classList.toggle("desktop-mode",desktopMode);if(!desktopMode)clearDesktopInput()});
 document.addEventListener("webkitfullscreenchange",()=>{desktopMode=document.webkitFullscreenElement===gamepadEl;document.body.classList.toggle("desktop-mode",desktopMode);if(!desktopMode)clearDesktopInput()});
@@ -329,7 +317,7 @@ function updateUndo(){undoButton.disabled=undoHistory.length===0}
 function pushUndo(){undoHistory.push(readLayout());if(undoHistory.length>30)undoHistory.shift();updateUndo()}
 function selectControl(el){if(selected)selected.classList.remove("selected");selected=el;if(selected)selected.classList.add("selected");positionResizeHandle()}
 function positionResizeHandle(){if(!editing||!selected){resizeHandle.classList.remove("active");return}const r=selected.getBoundingClientRect();resizeHandle.style.left=`${r.right-15}px`;resizeHandle.style.top=`${r.bottom-15}px`;resizeHandle.classList.add("active")}
-function finishEdit(){stopCalibration();selectControl(null);captureAction="";document.getElementById("keymapPanel").classList.remove("open");editing=false;document.body.classList.remove("editing")}
+function finishEdit(){selectControl(null);captureAction="";document.getElementById("keymapPanel").classList.remove("open");editing=false;document.body.classList.remove("editing")}
 document.getElementById("editLayout").addEventListener("click",()=>{editSnapshot=readLayout();undoHistory=[];updateUndo();Object.assign(touch,neutral());dirs.clear();send(true);editing=true;document.body.classList.add("editing");selectControl(document.querySelector('[data-move="face"]'))});
 swapButton.addEventListener("click",()=>{pushUndo();setStickSwap(!sticksSwapped)});
 undoButton.addEventListener("click",()=>{if(!undoHistory.length)return;applyLayout(undoHistory.pop());updateUndo()});
@@ -352,97 +340,20 @@ updateUndo();
 loadLayout();
 window.addEventListener("orientationchange",()=>setTimeout(()=>{if(!editing)loadLayout();else positionResizeHandle()},150));
 function pressed(g,i){return !!g.buttons[i]&&(g.buttons[i].pressed||g.buttons[i].value>.5)}
-var calibration=null;
-let currentGamepads=[];
-let gamepadProfiles={};
-try{gamepadProfiles=JSON.parse(localStorage.getItem("switchpad-gamepad-calibration-v1"))||{}}catch(e){}
-const calibrationSteps=[
-  ["lx","negative","Hold the LEFT stick fully LEFT"],["lx","positive","Hold the LEFT stick fully RIGHT"],
-  ["ly","negative","Hold the LEFT stick fully UP"],["ly","positive","Hold the LEFT stick fully DOWN"],
-  ["rx","negative","Hold the RIGHT stick fully LEFT"],["rx","positive","Hold the RIGHT stick fully RIGHT"],
-  ["ry","negative","Hold the RIGHT stick fully UP"],["ry","positive","Hold the RIGHT stick fully DOWN"],
-  [16,null,"Hold L only"],[64,null,"Hold ZL only"],[32,null,"Hold R only"],[128,null,"Hold ZR only"]
-];
-function profileKey(g){return JSON.stringify([g.id,g.mapping,g.axes.length,g.buttons.length])}
-function stopCalibration(){calibration=null;document.getElementById("calibrationPanel").hidden=true;document.getElementById("keymapPanel").classList.remove("calibrating");send(true)}
-document.getElementById("cancelCalibration").onclick=stopCalibration;
-document.getElementById("calibrateGamepad").onclick=()=>{
-  const g=currentGamepads[0];
-  const prompt=document.getElementById("calibrationPrompt");
-  document.getElementById("calibrationPanel").hidden=false;
-  document.getElementById("keymapPanel").classList.add("calibrating");
-  document.getElementById("keymapPanel").scrollTop=0;
-  if(!g){prompt.textContent="Connect a controller and press one of its buttons first.";return}
-  calibration={id:g.id,index:g.index,key:profileKey(g),step:-1,axes:{},buttons:{}};
-  captureAction="";
-  prompt.textContent="Release every button and let both sticks rest, then click Capture.";
-  send(true);
-};
-document.getElementById("captureCalibration").onclick=()=>{
-  if(!calibration)return;
-  const c=calibration,g=currentGamepads.find(g=>g.index===c.index&&g.id===c.id);
-  const prompt=document.getElementById("calibrationPrompt");
-  if(!g){prompt.textContent="Controller disconnected. Reconnect it or cancel.";return}
-  if(c.step===-1){
-    if(g.buttons.some(b=>b.pressed||b.value>.5)){prompt.textContent="Release all buttons before capturing neutral.";return}
-    c.centers=Array.from(g.axes);
-  }else{
-    const [key,end]=calibrationSteps[c.step];
-    if(end){
-      const used=Object.entries(c.axes).filter(([k])=>k!==key).map(([,s])=>s.index);
-      const samples=c.peaks||g.axes;
-      const index=c.axes[key]?.index??SwitchGamepad.detectAxis(samples,c.centers,used);
-      const v=samples[index],center=c.centers[index];
-      if(index<0||!Number.isFinite(v)||Math.abs(v-center)<.002){prompt.textContent=`No stick movement received. ${calibrationSteps[c.step][2]}, release it, then click Capture.`;return}
-      if(end==="positive"&&(v-center)*(c.axes[key].negative-center)>=0){prompt.textContent="Move the stick to the opposite end and capture again.";return}
-      c.axes[key]={...c.axes[key],index,center,[end]:v};
-    }else{
-      const indices=g.buttons.map((b,i)=>pressed(g,i)?i:-1).filter(i=>i>=0);
-      if(indices.length!==1||Object.entries(c.buttons).some(([bit,index])=>Number(bit)!==key&&index===indices[0])){prompt.textContent="Hold only the requested shoulder button, then capture again.";return}
-      c.buttons[key]=indices[0];
-    }
-  }
-  c.step++;
-  c.peaks=Array.from(c.centers);
-  if(c.step===calibrationSteps.length){
-    const profile={axes:c.axes,buttons:c.buttons};
-    try{localStorage.setItem("switchpad-gamepad-calibration-v1",JSON.stringify({...gamepadProfiles,[c.key]:profile}))}catch(e){prompt.textContent="Could not save calibration. Allow browser storage and try again.";c.step--;return}
-    gamepadProfiles[c.key]=profile;stopCalibration();
-    document.getElementById("calibrateGamepad").textContent="Recalibrate controller";
-  }else prompt.textContent=`${c.step+1}/${calibrationSteps.length}: ${calibrationSteps[c.step][2]}, then click Capture. Release the other controls.`;
-};
 function pollGamepads(){
   let pads=[],padError=false;
   try{pads=navigator.getGamepads?[...navigator.getGamepads()].filter(Boolean):[]}catch(e){padError=true}
-  currentGamepads=pads;
-  if(calibration){
-    const c=calibration,g=pads.find(g=>g.index===c.index&&g.id===c.id);
-    if(g){
-      if(c.step>=0&&calibrationSteps[c.step]?.[1]){
-        const [key,end]=calibrationSteps[c.step];
-        g.axes.forEach((v,i)=>{
-          if(!Number.isFinite(v))return;
-          if(end==="positive"&&c.axes[key]&&(v-c.centers[i])*(c.axes[key].negative-c.centers[i])>=0)return;
-          if(Math.abs(v-c.centers[i])>Math.abs(c.peaks[i]-c.centers[i]))c.peaks[i]=v;
-        });
-      }
-      const values=a=>a?.map(v=>Number(v.toFixed(6))).join(", ")||"not captured";
-      document.getElementById("calibrationRaw").textContent=`Live: ${values(Array.from(g.axes))}\nNeutral: ${values(c.centers)}\nRecorded: ${values(c.peaks)}`;
-    }
-  }
   physicalConnected=pads.length>0;Object.assign(physical,neutral());
-  const rawEl=document.getElementById("gamepadRaw");
-  if(document.getElementById("gamepadDetails").open)rawEl.textContent=JSON.stringify(pads.map(g=>({name:g.id,mapping:g.mapping,axes:Array.from(g.axes).map(v=>Number(v.toFixed(3))),buttonCount:g.buttons.length,pressed:g.buttons.map((b,i)=>b.pressed||b.value>.5?i:null).filter(i=>i!==null)})),null,2);
   if(pads.length){
-    const names=[];let axesState=null;
+    const names=[];let axesPad=null;
     for(const g of pads){
       names.push(g.id.replace(/\s*\([^)]*vendor[^)]*\)/i,"").slice(0,28));
-      const state=SwitchGamepad.mapGamepad(g,gamepadProfiles[profileKey(g)]);
-      physical.buttons|=state.buttons;
-      if(state.hat!==8)physical.hat=state.hat;
-      if(!axesState&&g.axes.length>=2)axesState=state;
+      const indices=[0,1,2,3,4,5,6,7,8,9,10,11,16,17],bits=[2,4,1,8,16,32,64,128,256,512,1024,2048,4096,8192];
+      indices.forEach((idx,i)=>{if(pressed(g,idx))physical.buttons|=bits[i]});
+      if(pressed(g,12))physical.hat=0;else if(pressed(g,13))physical.hat=4;else if(pressed(g,14))physical.hat=6;else if(pressed(g,15))physical.hat=2;
+      if(!axesPad&&g.axes.length>=2)axesPad=g;
     }
-    if(axesState)for(const axis of ["lx","ly","rx","ry"])physical[axis]=axesState[axis];
+    if(axesPad){const a=axesPad.axes,axis=i=>Math.round(Math.max(-1,Math.min(1,a[i]||0))*127+128);physical.lx=axis(0);physical.ly=axis(1);if(a.length>=4){physical.rx=axis(2);physical.ry=axis(3)}}
     gpEl.textContent=names.join(" + ");
   }else gpEl.textContent=padError?"gamepad unavailable":desktopMode?"keyboard + mouse":"touch controls";
   send();requestAnimationFrame(pollGamepads);
