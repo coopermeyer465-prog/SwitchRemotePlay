@@ -44,6 +44,17 @@ class RelayTests(unittest.IsolatedAsyncioTestCase):
         self.assertIsNone(self.bridge.owner)
         self.assertEqual(self.serial.in_waiting, 0)
 
+    async def test_timing_probe_does_not_send_controller_input(self):
+        ws = await self.client.ws_connect('/ws?device=phone')
+        await ws.send_str('probe')
+        reply = await ws.receive_json()
+        self.assertEqual(reply['type'], 'probe')
+        self.assertGreaterEqual(reply['serial_pending'], 0)
+        self.assertEqual(self.serial.in_waiting, 0)
+        self.assertEqual(self.bridge.report, NEUTRAL)
+        self.assertEqual(self.bridge.last_input, 0)
+        await ws.close()
+
     async def test_timeout_releases_inputs_and_slot(self):
         self.bridge.claim('phone')
         self.bridge.accept('device=phone&buttons=4&hat=8&lx=0&ly=128&rx=128&ry=128')

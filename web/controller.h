@@ -116,6 +116,7 @@ button.down,button.desktop-lit,button:active{background:#3b4652!important;box-sh
   <section id="keymapPanel" class="keymap-panel" aria-label="Desktop control mappings">
     <div class="keymap-header"><strong>Desktop controls</strong><button id="closeKeymap" aria-label="Close mappings">X</button></div>
     <div id="keymapGrid" class="keymap-grid"></div>
+    <details id="timingDetails"><summary>Input timing</summary><pre id="timingReadout" style="white-space:pre-wrap;font-size:12px"></pre></details>
     <div class="keymap-footer"><button id="resetKeymap" aria-label="Reset desktop mappings" title="Reset mappings"><svg viewBox="0 0 24 24"><path d="M3 12a9 9 0 1 0 3-6.7L3 8"/><path d="M3 3v5h5"/></svg></button></div>
   </section>
   <div class="layout-tools">
@@ -146,10 +147,15 @@ const desktopKeys=new Set(),desktopMouseButtons=new Set();
 const dot=document.getElementById("dot"),statusEl=document.getElementById("status"),gpEl=document.getElementById("gp");
 const hidButton=document.getElementById("connectHID");
 let hidDevice=null,hidState=neutral(),hidLayouts=null,hidMessage="",hidBusy=false;
+const hidGaps=[];
+let lastHidAt=0,probeAt=0,relayRtt=null,serialPending=null;
 hidButton.hidden=!navigator.hid;
 function hidInput(event){
   const state=Lic2HID.decode(hidLayouts?.get(event.reportId),event.data);
   if(!state)return;
+  const arrival=performance.now();
+  if(lastHidAt&&arrival-lastHidAt<500){hidGaps.push(arrival-lastHidAt);if(hidGaps.length>120)hidGaps.shift()}
+  lastHidAt=arrival;
   hidState=state;hidMessage=`WebHID · ${hidDevice.productName}`;
   Object.assign(physical,state);physicalConnected=true;send();
 }
@@ -169,7 +175,7 @@ hidButton.onclick=async()=>{
     if(!/^Lic2 Pro Controller\b/i.test(device.productName)){hidMessage="Select Lic2 Pro Controller";return}
     const reports=Lic2HID.layouts(device.collections);
     if(!reports.size){hidMessage="No supported raw stick report found";return}
-    await device.open();hidDevice=device;hidLayouts=reports;hidState=neutral();
+    await device.open();hidDevice=device;hidLayouts=reports;hidState=neutral();lastHidAt=0;hidGaps.length=0;
     hidMessage="WebHID connected · move a stick";
     device.addEventListener("inputreport",hidInput);
     hidButton.classList.add("active");hidButton.setAttribute("aria-label","Disconnect WebHID controller");hidButton.title="Disconnect WebHID controller";
@@ -211,7 +217,18 @@ function connect(){
   socket.onopen=()=>{if(ws!==socket)return;connected=true;dot.classList.add("ok");statusEl.textContent=`connected · P${player+1}`;lastSent="";send(true)};
   socket.onclose=()=>{if(ws!==socket)return;ws=null;connected=false;claimed=false;dot.classList.remove("ok");statusEl.textContent="reconnecting";retryConnection()};
   socket.onerror=()=>socket.close();
+  socket.onmessage=event=>{
+    try{const reply=JSON.parse(event.data);if(reply.type==="probe"&&probeAt){relayRtt=performance.now()-probeAt;serialPending=reply.serial_pending;probeAt=0}}catch(e){}
+  };
 }
+setInterval(()=>{
+  if(connected&&ws?.readyState===WebSocket.OPEN&&(!probeAt||performance.now()-probeAt>3000)){
+    probeAt=performance.now();ws.send("probe");
+  }
+  const sorted=[...hidGaps].sort((a,b)=>a-b);
+  const typical=sorted.length?`${sorted[Math.floor(sorted.length/2)].toFixed(1)} ms`:"move the controller sticks";
+  document.getElementById("timingReadout").textContent=`Input: ${hidDevice?"WebHID":"Gamepad / touch"}\nHID report gap (median): ${typical}\nBrowser ↔ relay RTT: ${relayRtt===null?"waiting":relayRtt.toFixed(1)+" ms"}\nSerial driver pending: ${serialPending===null?"waiting":serialPending+" bytes"}\nReport gaps include controller idle time. These are not end-to-end latency measurements.`;
+},1000);
 claimController();
 function merged(){
   return {buttons:touch.buttons|physical.buttons|desktop.buttons,hat:touch.hat!==8?touch.hat:desktop.hat!==8?desktop.hat:physical.hat,

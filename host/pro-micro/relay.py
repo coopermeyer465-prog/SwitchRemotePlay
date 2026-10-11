@@ -116,6 +116,13 @@ def create_app(bridge):
         await ws.prepare(request)
         async for msg in ws:
             if msg.type == web.WSMsgType.TEXT:
+                if msg.data == 'probe':
+                    try:
+                        pending = bridge.port.out_waiting
+                    except (serial.SerialException, OSError):
+                        pending = None
+                    await ws.send_json({'type': 'probe', 'serial_pending': pending})
+                    continue
                 try:
                     bridge.accept(msg.data, device)
                 except web.HTTPException:

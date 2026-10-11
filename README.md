@@ -108,6 +108,15 @@ still required for each controller variant.
 
 Test the decoder with `node --test web/lic2-hid.test.js`.
 
+For latency diagnosis, open the pencil editor, Desktop mappings, then
+**Input timing**. Move the controller continuously while sampling its median
+WebHID report gap. The browser-to-relay round trip and
+serial driver's pending bytes are also shown. Idle time affects report gaps;
+driver queue length does not include every hardware buffer. These diagnostics
+do not measure physical button-to-Switch or capture-preview latency. Compare
+controller and touchscreen input through the same video path to isolate their
+relative delay. Test browser scheduling with `node --test web/input-timing.test.js`.
+
 ## Mac-to-Mac Input
 
 1. Enable macOS Remote Login on the host for the intended account.
