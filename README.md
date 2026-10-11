@@ -84,6 +84,12 @@ zsh scripts/pro-micro-relay.sh --bind 0.0.0.0
 Open `http://<host-LAN-IP>:8080/` on the phone. LAN mode has no application login;
 do not expose this relay directly to the public Internet.
 
+For a Bluetooth controller connected to the host Mac, use
+`http://localhost:8080/`. Browsers restrict the Gamepad API to secure contexts;
+localhost qualifies, while a plain HTTP LAN IP may not. Press a controller
+button with the page open to let the browser expose the controller. If another
+page owns P1, close that page and allow up to 15 seconds for its lease to expire.
+
 ## Mac-to-Mac Input
 
 1. Enable macOS Remote Login on the host for the intended account.

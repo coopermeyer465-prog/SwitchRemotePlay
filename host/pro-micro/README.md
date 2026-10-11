@@ -8,8 +8,11 @@ for wiring, flashing, capture setup and Mac-to-Mac forwarding.
 The relay defaults to localhost for access through an SSH tunnel. Use
 `--bind 0.0.0.0` only for trusted LAN phone testing.
 
-Inputs and ownership expire after 750ms without updates. The browser sends
-a heartbeat every 250ms. The Pro Micro independently releases stale inputs.
+Inputs release after 750ms without updates; ownership lasts 15 seconds so a
+brief browser pause cannot hand the slot to another page. Input packets cannot
+claim a slot by themselves. The browser sends a heartbeat every 250ms, uses
+one WebSocket, and retries through one timer. The Pro Micro independently
+releases stale inputs.
 UART reports use CRC-8 (polynomial 0x07, initial value zero); malformed inputs
 are rejected. There is no added minimum button hold duration, but network,
 UART, USB polling and game timing limit the shortest observable press.

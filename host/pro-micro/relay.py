@@ -45,6 +45,7 @@ class Bridge:
         self.port = port
         self.owner = None
         self.last_input = 0
+        self.last_seen = 0
         self.report = NEUTRAL
 
     def write(self, report):
@@ -58,18 +59,21 @@ class Bridge:
         self.report = report
 
     def expire(self):
-        if self.owner and time.monotonic() - self.last_input > 0.75:
-            self.owner = None
-            self.write(NEUTRAL)
+        if self.owner:
+            now = time.monotonic()
+            if now - self.last_input > 0.75 and self.report != NEUTRAL:
+                self.write(NEUTRAL)
+            if now - self.last_seen > 15:
+                self.owner = None
 
     def claim(self, device):
         self.expire()
         if not device or len(device) > 128:
             raise web.HTTPBadRequest(text='Missing device ID')
         if self.owner not in (None, device):
-            raise web.HTTPServiceUnavailable(text='Controller is in use')
+            raise web.HTTPConflict(text='Controller is in use')
         self.owner = device
-        self.last_input = time.monotonic()
+        self.last_seen = time.monotonic()
 
     def accept(self, text, device=None):
         try:
@@ -78,8 +82,11 @@ class Bridge:
             raise web.HTTPBadRequest(text='Invalid input') from exc
         if device is not None and input_device != device:
             raise web.HTTPBadRequest(text='Device ID mismatch')
-        self.claim(input_device)
+        self.expire()
+        if self.owner != input_device:
+            raise web.HTTPConflict(text='Claim controller before sending input')
         self.write(report)
+        self.last_input = self.last_seen = time.monotonic()
 
 
 def create_app(bridge):

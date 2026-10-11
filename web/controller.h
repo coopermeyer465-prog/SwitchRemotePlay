@@ -155,19 +155,25 @@ function loadDeviceId(){
   try{const saved=localStorage.getItem(deviceKey);if(saved)return saved;const bytes=new Uint8Array(12);crypto.getRandomValues(bytes);const id=[...bytes].map(x=>x.toString(16).padStart(2,"0")).join("");localStorage.setItem(deviceKey,id);return id}catch(e){return `${Date.now().toString(36)}-${Math.random().toString(36).slice(2)}`}
 }
 const deviceId=loadDeviceId();
+let claimBusy=false,retryTimer=0;
+function retryConnection(){if(!retryTimer)retryTimer=setTimeout(()=>{retryTimer=0;claimController()},1000)}
 async function claimController(){
+  if(claimBusy||connected)return;
+  claimBusy=true;
   try{
     const response=await fetch(`/api/claim?device=${encodeURIComponent(deviceId)}`,{cache:"no-store"});
-    if(!response.ok)throw Error(response.status===503?"full":"offline");
-    const data=await response.json();player=data.player;claimed=true;showPlayer();dot.classList.add("ok");statusEl.textContent=`connected · P${player+1}`;connect();send(true);
-  }catch(e){claimed=false;dot.classList.remove("ok");statusEl.textContent=e.message==="full"?"4 controllers in use":"reconnecting";setTimeout(claimController,1000)}
+    if(!response.ok)throw Error(response.status===409?"full":"offline");
+    const data=await response.json();player=data.player;claimed=true;showPlayer();connect();
+  }catch(e){claimed=false;dot.classList.remove("ok");statusEl.textContent=e.message==="full"?"controller in use":"reconnecting";retryConnection()}
+  finally{claimBusy=false}
 }
 function connect(){
-  if(!claimed)return;
-  ws=new WebSocket(`ws://${location.host}/ws?device=${encodeURIComponent(deviceId)}`);
-  ws.onopen=()=>{connected=true;useHttp=false;dot.classList.add("ok");statusEl.textContent=`connected · P${player+1}`;lastSent="";send(true)};
-  ws.onclose=()=>{connected=false;useHttp=true;if(claimed){dot.classList.add("ok");statusEl.textContent=`connected · P${player+1}`;send(true);setTimeout(connect,1000)}};
-  ws.onerror=()=>ws.close();
+  if(!claimed||(ws&&ws.readyState<=WebSocket.OPEN))return;
+  const socket=new WebSocket(`${location.protocol==="https:"?"wss":"ws"}://${location.host}/ws?device=${encodeURIComponent(deviceId)}`);
+  ws=socket;useHttp=false;
+  socket.onopen=()=>{if(ws!==socket)return;connected=true;dot.classList.add("ok");statusEl.textContent=`connected · P${player+1}`;lastSent="";send(true)};
+  socket.onclose=()=>{if(ws!==socket)return;ws=null;connected=false;claimed=false;dot.classList.remove("ok");statusEl.textContent="reconnecting";retryConnection()};
+  socket.onerror=()=>socket.close();
 }
 claimController();
 function merged(){
@@ -334,7 +340,9 @@ loadLayout();
 window.addEventListener("orientationchange",()=>setTimeout(()=>{if(!editing)loadLayout();else positionResizeHandle()},150));
 function pressed(g,i){return !!g.buttons[i]&&(g.buttons[i].pressed||g.buttons[i].value>.5)}
 function pollGamepads(){
-  const pads=navigator.getGamepads?[...navigator.getGamepads()].filter(Boolean):[];physicalConnected=pads.length>0;Object.assign(physical,neutral());
+  let pads=[],padError=false;
+  try{pads=navigator.getGamepads?[...navigator.getGamepads()].filter(Boolean):[]}catch(e){padError=true}
+  physicalConnected=pads.length>0;Object.assign(physical,neutral());
   if(pads.length){
     const names=[];let axesPad=null;
     for(const g of pads){
@@ -346,10 +354,10 @@ function pollGamepads(){
     }
     if(axesPad){const a=axesPad.axes,axis=i=>Math.round(Math.max(-1,Math.min(1,a[i]||0))*127+128);physical.lx=axis(0);physical.ly=axis(1);if(a.length>=4){physical.rx=axis(2);physical.ry=axis(3)}}
     gpEl.textContent=names.join(" + ");
-  }else gpEl.textContent=desktopMode?"keyboard + mouse":"touch controls";
+  }else gpEl.textContent=padError?"gamepad unavailable":desktopMode?"keyboard + mouse":"touch controls";
   send();requestAnimationFrame(pollGamepads);
 }
-window.addEventListener("gamepadconnected",()=>send(true));window.addEventListener("gamepaddisconnected",()=>send(true));pollGamepads();setInterval(()=>send(true),250);
+window.addEventListener("gamepadconnected",()=>send(true));window.addEventListener("gamepaddisconnected",()=>send(true));setInterval(()=>send(true),250);pollGamepads();
 document.addEventListener("contextmenu",e=>e.preventDefault());
 document.addEventListener("dblclick",e=>e.preventDefault(),{passive:false});
 document.addEventListener("gesturestart",e=>e.preventDefault(),{passive:false});
